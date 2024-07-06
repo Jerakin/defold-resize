@@ -1,0 +1,79 @@
+local resize = require "resize.resize"
+
+local function build_menu(self)
+    for _, node in pairs(self.nodes) do
+        gui.delete_node(node.nodes["button_template"])
+    end
+    self.nodes = {}
+    local i = 0
+    for _, data in pairs(resize.sizes()) do
+        local size = data.size
+        local name = data.name
+        local nodes = gui.clone_tree(self.button_template)
+        gui.set_parent(nodes["button_template"], self.menu)
+        gui.set_enabled(nodes["button_template"], true)
+        gui.set_position(nodes["button_template"], vmath.vector3(0, 36 * i, 0))
+        gui.set_text(nodes["text"], name)
+        table.insert(self.nodes, {nodes=nodes, name=name, size=size})
+        i = i + 1
+    end
+    gui.set_size(self.menu, vmath.vector3(200, (36*i)-2, 0))
+end
+
+function init(self)
+    resize._gui_url = msg.url()
+    gui.set_render_order(15)
+    msg.post(".", "acquire_input_focus")
+    self.resize_node = gui.get_node("resize_node")
+    self.button_template = gui.get_node("button_template")
+    self.menu = gui.get_node("menu")
+    self.nodes = {}
+    self.bottom_right = vmath.vector3(vmath.vector3(sys.get_config("display.width"), 0, 1))
+
+    gui.set_position(gui.get_node("anchor"), self.bottom_right)
+    gui.set_position(self.menu, self.bottom_right)
+
+    self.active = false
+    self.enabled = true
+    gui.set_enabled(self.menu, false)
+
+    build_menu(self)
+end
+
+function on_message(self, message_id, message)
+    if message_id == hash("resize-rebuild") then
+        build_menu(self)
+    end
+end
+
+local function set_enable(self, enable)
+    gui.set_enabled(self.menu, enable)
+    self.enabled = enable
+end
+
+function on_input(self, action_id, action)
+    if self.active then
+        for _, node in pairs(self.nodes) do
+            if action_id == hash("touch") and action.pressed and gui.pick_node(node.nodes["button_template"], action.x, action.y) then
+                set_enable(self, false)
+                self.active = false
+                msg.post("@render:", "resize", { width = node.size.x * node.size.z, height = node.size.y * node.size.z })
+                return true
+            end
+        end
+    end
+    if action_id == hash("touch") and action.released then
+        if self.enabled then
+            if self.active then
+                set_enable(self, false)
+                self.active = false
+            else
+                self.active = true
+            end
+        end
+    end
+    if action_id == hash("touch") and action.pressed and gui.pick_node(self.resize_node, action.x, action.y) then
+        set_enable(self, true)
+        return true
+    end
+end
